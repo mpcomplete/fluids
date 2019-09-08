@@ -61,7 +61,7 @@ var velocity = createDoubleFBO(
   (Array(SIZE * SIZE * 4)).fill(0));
 var ink = createDoubleFBO(
   (Array(SIZE * SIZE * 4)).fill(0).map(
-    () => Math.random() > 0.99 ? 255 : 0));
+    () => Math.random() > 0.99 ? 80 : 0));
 // var ink = createDoubleFBO(
 //   (Array(SIZE * SIZE * 4)).fill(0));
 
