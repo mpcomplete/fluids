@@ -61,7 +61,7 @@ var velocity = createDoubleFBO(
   (Array(SIZE * SIZE * 4)).fill(0));
 var ink = createDoubleFBO(
   (Array(SIZE * SIZE * 4)).fill(0).map(
-    () => Math.random() > 0.99 ? 80 : 0));
+    () => Math.random() > 0.99 ? 20 : 0));
 // var ink = createDoubleFBO(
 //   (Array(SIZE * SIZE * 4)).fill(0));
 
@@ -79,7 +79,6 @@ reglCanvas.addEventListener('mousemove', e => {
 window.addEventListener('mouseup', () => {
   mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
 });
-
 function updateMouse(e, delta) {
   var lastPos = mouse.pos;
   mouse.pos = [Math.floor(e.offsetX * window.devicePixelRatio) / reglCanvas.width,
@@ -90,9 +89,41 @@ function updateMouse(e, delta) {
   } else {
     mouse.delta = [0.0, 0.0];
   }
-  mouse.color = [0.0, 0.4, .4];
+  mouse.color = generateColor();
 
   console.log("mouse: ", mouse.pos, mouse.delta);
+}
+
+function generateColor () {
+  let c = HSVtoRGB(Math.random(), 1.0, 1.0);
+  c[0] *= 0.15;
+  c[1] *= 0.15;
+  c[2] *= 0.15;
+  return c;
+}
+
+function HSVtoRGB (h, s, v) {
+  let r, g, b, i, f, p, q, t;
+  i = Math.floor(h * 6);
+  f = h * 6 - i;
+  p = v * (1 - s);
+  q = v * (1 - f * s);
+  t = v * (1 - (1 - f) * s);
+
+  switch (i % 6) {
+      case 0: r = v, g = t, b = p; break;
+      case 1: r = q, g = v, b = p; break;
+      case 2: r = p, g = v, b = t; break;
+      case 3: r = p, g = q, b = v; break;
+      case 4: r = t, g = p, b = v; break;
+      case 5: r = v, g = p, b = q; break;
+  }
+
+  return [
+      r,
+      g,
+      b
+  ];
 }
 
 const advect = myregl({
@@ -125,55 +156,28 @@ const applyForce = myregl({
   precision mediump float;
   uniform sampler2D velocity;
   uniform vec2 mouse;
-  uniform vec2 mouseDelta;
+  uniform vec3 color;
   uniform float gridSize;
   uniform float dt;
   varying vec2 uv;
 
   void main() {
-    float d = 10.*max(0.1 - distance(uv, mouse.xy), 0.);
-    vec2 u = texture2D(velocity, uv).xy;
-    // u += mouseDelta*d*dt*gridSize;
-    u += mouseDelta*d*100.;
-    gl_FragColor = vec4(u.xy, 0., 1.);
+    vec2 p = uv - mouse.xy;
+    float d = exp(-dot(p, p) / .001);
+    vec3 u = color*d;
+    gl_FragColor = vec4(u, 1.);
   }`,
 
   uniforms: {
-    velocity: regl.prop('velocity'),
+    color: regl.prop('color'),
     mouse: () => mouse.pos,
-    mouseDelta: () => mouse.delta,
-    mouseColor: () => mouse.color || [1.0, 0, 0],
     dt: 1./60,
     gridSize: 1./SIZE,
   },
 
-  framebuffer: regl.prop('framebuffer'),
-});
-
-const applyInk = myregl({
-  frag: `
-  precision mediump float;
-  uniform sampler2D ink;
-  uniform vec2 mouse;
-  uniform vec2 mouseDelta;
-  uniform vec3 mouseColor;
-  uniform float gridSize;
-  uniform float dt;
-  varying vec2 uv;
-
-  void main() {
-    float d = 1.*max(0.1 - distance(uv, mouse.xy), 0.);
-    vec3 origColor = texture2D(ink, uv).rgb;
-    gl_FragColor = vec4(d*mouseColor + origColor, 1.);
-  }`,
-
-  uniforms: {
-    ink: regl.prop('ink'),
-    mouse: () => mouse.pos,
-    mouseDelta: () => mouse.delta,
-    mouseColor: () => mouse.color || [1.0, 0, 0],
-    dt: 1./60,
-    gridSize: 1./SIZE,
+  blend: {
+    enable: true,
+    func: {src: 'one', dst: 'one'},
   },
 
   framebuffer: regl.prop('framebuffer'),
@@ -205,11 +209,8 @@ regl.frame(function () {
   advect({velocity: velocity.src, quantity: ink.src, framebuffer: ink.dst});
 
   if (mouse.isDown) {
-    velocity.swap();
-    applyForce({velocity: velocity.src, framebuffer: velocity.dst});
-
-    ink.swap();
-    applyInk({ink: ink.src, framebuffer: ink.dst});
+    applyForce({color: [1000*mouse.delta[0], 100*mouse.delta[1], 0.], framebuffer: velocity.dst});
+    applyForce({color: mouse.color, framebuffer: ink.dst});
     console.log("inking:", mouse.pos);
   }
 
