@@ -67,23 +67,23 @@ function myregl(p) {
       gridSize: [1./SIZE, 1./SIZE],
     }),
     count: 6,
+    framebuffer: regl.prop("framebuffer")
   }, p));
 }
 
 var velocity = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
 var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0).map(
     (v, i) => i / (SIZE*SIZE*4)));
-    // () => Math.random() > 0.99 ? 20 : 0));
 var pressure = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
 var divVelocity = createFBO((Array(SIZE * SIZE * 4)).fill(0));
 
 var mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
-var reglCanvas = document.getElementsByTagName("canvas")[0]; // TODO: rename
+var canvas = document.getElementsByTagName("canvas")[0]; // TODO: rename
 
-reglCanvas.addEventListener('mousedown', e => {
+canvas.addEventListener('mousedown', e => {
   updateMouse(e);
 });
-reglCanvas.addEventListener('mousemove', e => {
+canvas.addEventListener('mousemove', e => {
   if (!mouse.isDown)
     return;
   updateMouse(e, true);
@@ -93,8 +93,8 @@ window.addEventListener('mouseup', () => {
 });
 function updateMouse(e, delta) {
   var lastPos = mouse.pos;
-  mouse.pos = [Math.floor(e.offsetX * window.devicePixelRatio) / reglCanvas.width,
-               1.0 - Math.floor(e.offsetY * window.devicePixelRatio) / reglCanvas.height];
+  mouse.pos = [Math.floor(e.offsetX * window.devicePixelRatio) / canvas.width,
+               1.0 - Math.floor(e.offsetY * window.devicePixelRatio) / canvas.height];
   mouse.isDown = true;
   if (delta) {
     mouse.delta = [mouse.pos[0] - lastPos[0], mouse.pos[1] - lastPos[1]];
@@ -155,8 +155,6 @@ const advect = myregl({
     dt: 1./60,
     dissipation: .2,
   },
-
-  framebuffer: regl.prop('framebuffer'),
 });
 
 const applyForce = myregl({
@@ -184,8 +182,6 @@ const applyForce = myregl({
     enable: true,
     func: {src: 'one', dst: 'one'},
   },
-
-  framebuffer: regl.prop('framebuffer'),
 });
 
 // One iteration of Jacobi technique:
@@ -225,8 +221,6 @@ const jacobi = myregl({
     alpha: regl.prop('alpha'),
     rBeta: regl.prop('rBeta'),
   },
-
-  framebuffer: regl.prop('framebuffer'),
 });
 
 // Calculates div*Velocity from Velocity.
@@ -252,8 +246,6 @@ const divergence = myregl({
   uniforms: {
     velocity: regl.prop('velocity'),
   },
-
-  framebuffer: regl.prop('framebuffer'),
 });
 
 // w = u - grad P;
@@ -282,8 +274,6 @@ const subtractPressure = myregl({
     pressure: regl.prop('pressure'),
     velocity: regl.prop('velocity'),
   },
-
-  framebuffer: regl.prop('framebuffer'),
 });
 
 // TODO: remove?
@@ -301,8 +291,6 @@ const clearProgram = myregl({
     quantity: regl.prop('quantity'),
     value: 0.,
   },
-
-  framebuffer: regl.prop('framebuffer'),
 })
 
 const draw = myregl({
@@ -318,8 +306,6 @@ const draw = myregl({
   uniforms: {
     quantity: regl.prop('quantity'),
   },
-
-  framebuffer: regl.prop('framebuffer'),
 })
 
 function doJacobi(count, x, p) {
