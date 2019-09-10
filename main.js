@@ -32,13 +32,24 @@ function createDoubleFBO(data) {
 }
 
 function myregl(p) {
-  return regl(extend(p, {
+  return regl(extend({
     vert: `
     precision mediump float;
+    uniform vec2 gridSize;
     attribute vec2 position;
     varying vec2 uv;
+    varying vec2 uvL;
+    varying vec2 uvR;
+    varying vec2 uvT;
+    varying vec2 uvB;
     void main () {
+      vec2 dx = vec2(gridSize.x, 0.);
+      vec2 dy = vec2(0., gridSize.y);
       uv = position * 0.5 + 0.5;
+      uvL = uv - dx;
+      uvR = uv + dx;
+      uvB = uv - dy;
+      uvT = uv + dy;
       gl_Position = vec4(position, 0., 1.);
     }`,
     
@@ -52,14 +63,17 @@ function myregl(p) {
         1, -1
       ]
     },
-
+    uniforms: extend(p.uniforms, {
+      gridSize: [1./SIZE, 1./SIZE],
+    }),
     count: 6,
-  }));
+  }, p));
 }
 
 var velocity = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
 var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0).map(
-    () => Math.random() > 0.99 ? 20 : 0));
+    (v, i) => i / (SIZE*SIZE*4)));
+    // () => Math.random() > 0.99 ? 20 : 0));
 var pressure = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
 var divVelocity = createFBO((Array(SIZE * SIZE * 4)).fill(0));
 
@@ -88,15 +102,10 @@ function updateMouse(e, delta) {
     mouse.delta = [0.0, 0.0];
   }
   mouse.color = generateColor();
-
-  console.log("mouse: ", mouse.pos, mouse.delta);
 }
 
 function generateColor () {
   let c = HSVtoRGB(Math.random(), 1.0, 1.0);
-  c[0] *= 0.15;
-  c[1] *= 0.15;
-  c[2] *= 0.15;
   return c;
 }
 
@@ -130,18 +139,21 @@ const advect = myregl({
   uniform sampler2D velocity;
   uniform sampler2D quantity;
   uniform float dt;
+  uniform float dissipation;
   varying vec2 uv;
 
   void main() {
     vec2 u = texture2D(velocity, uv).xy;
     vec2 uvOld = uv - u*dt;
-    gl_FragColor = vec4(texture2D(quantity, uvOld).xyz, 1.);
+    float decay = 1.0 + dissipation * dt;
+    gl_FragColor = vec4(texture2D(quantity, uvOld).xyz / decay, 1.);
   }`,
 
   uniforms: {
     velocity: regl.prop('velocity'),
     quantity: regl.prop('quantity'),
     dt: 1./60,
+    dissipation: .2,
   },
 
   framebuffer: regl.prop('framebuffer'),
@@ -152,7 +164,6 @@ const applyForce = myregl({
   precision mediump float;
   uniform vec2 mouse;
   uniform vec3 color;
-  uniform float gridSize;
   uniform float dt;
   varying vec2 uv;
 
@@ -167,7 +178,6 @@ const applyForce = myregl({
     color: regl.prop('color'),
     mouse: () => mouse.pos,
     dt: 1./60,
-    gridSize: 1./SIZE,
   },
 
   blend: {
@@ -188,17 +198,19 @@ const jacobi = myregl({
   precision mediump float;
   uniform sampler2D x;
   uniform sampler2D b;
-  uniform vec2 gridSize;
   uniform float alpha;
   uniform float rBeta;
   varying vec2 uv;
+  varying vec2 uvL;
+  varying vec2 uvR;
+  varying vec2 uvT;
+  varying vec2 uvB;
 
   void main() {
-    vec3 d = vec3(gridSize.xy, 0.);
-    vec4 xL = texture2D(x, uv - d.xz);
-    vec4 xR = texture2D(x, uv + d.xz);
-    vec4 xB = texture2D(x, uv - d.zy);
-    vec4 xT = texture2D(x, uv + d.zy);
+    vec4 xL = texture2D(x, uvL);
+    vec4 xR = texture2D(x, uvR);
+    vec4 xB = texture2D(x, uvB);
+    vec4 xT = texture2D(x, uvT);
 
     // b sample, from center
     vec4 bC = texture2D(b, uv);
@@ -212,7 +224,6 @@ const jacobi = myregl({
     b: regl.prop('b'),
     alpha: regl.prop('alpha'),
     rBeta: regl.prop('rBeta'),
-    gridSize: [1./SIZE, 1./SIZE],
   },
 
   framebuffer: regl.prop('framebuffer'),
@@ -223,22 +234,23 @@ const divergence = myregl({
   frag: `
   precision mediump float;
   uniform sampler2D velocity;
-  uniform vec2 gridSize;
   varying vec2 uv;
+  varying vec2 uvL;
+  varying vec2 uvR;
+  varying vec2 uvT;
+  varying vec2 uvB;
 
   void main() {
-    vec3 d = vec3(gridSize.xy, 0.);
-    float vL = texture2D(velocity, uv - d.xz).x;
-    float vR = texture2D(velocity, uv + d.xz).x;
-    float vB = texture2D(velocity, uv - d.zy).y;
-    float vT = texture2D(velocity, uv + d.zy).y;
+    float vL = texture2D(velocity, uvL).x;
+    float vR = texture2D(velocity, uvR).x;
+    float vB = texture2D(velocity, uvB).y;
+    float vT = texture2D(velocity, uvT).y;
     float div = (vR - vL + vT - vB) * .5;
     gl_FragColor = vec4(div);
   }`,
 
   uniforms: {
     velocity: regl.prop('velocity'),
-    gridSize: [1./SIZE, 1./SIZE],
   },
 
   framebuffer: regl.prop('framebuffer'),
@@ -250,15 +262,17 @@ const subtractPressure = myregl({
   precision mediump float;
   uniform sampler2D pressure;
   uniform sampler2D velocity;
-  uniform vec2 gridSize;
   varying vec2 uv;
+  varying vec2 uvL;
+  varying vec2 uvR;
+  varying vec2 uvT;
+  varying vec2 uvB;
 
   void main() {
-    vec3 d = vec3(gridSize.xy, 0.);
-    float pL = texture2D(pressure, uv - d.xz).x;
-    float pR = texture2D(pressure, uv + d.xz).x;
-    float pB = texture2D(pressure, uv - d.zy).x;
-    float pT = texture2D(pressure, uv + d.zy).x;
+    float pL = texture2D(pressure, uvL).x;
+    float pR = texture2D(pressure, uvR).x;
+    float pB = texture2D(pressure, uvB).x;
+    float pT = texture2D(pressure, uvT).x;
     vec2 uNew = texture2D(velocity, uv).xy;
     uNew -= vec2(pR - pL, pT - pB) * .5;
     gl_FragColor = vec4(uNew, 0., 1.);
@@ -267,7 +281,6 @@ const subtractPressure = myregl({
   uniforms: {
     pressure: regl.prop('pressure'),
     velocity: regl.prop('velocity'),
-    gridSize: [1./SIZE, 1./SIZE],
   },
 
   framebuffer: regl.prop('framebuffer'),
@@ -306,7 +319,7 @@ const draw = myregl({
     quantity: regl.prop('quantity'),
   },
 
-//  framebuffer: regl.prop('framebuffer'),
+  framebuffer: regl.prop('framebuffer'),
 })
 
 function doJacobi(count, x, p) {
@@ -331,7 +344,7 @@ regl.frame(function () {
   advect({velocity: velocity.src, quantity: ink.src, framebuffer: ink.dst});
 
   if (mouse.isDown) {
-    applyForce({color: [10*mouse.delta[0], 10*mouse.delta[1], 0.], framebuffer: velocity.dst});
+    applyForce({color: [30*mouse.delta[0], 30*mouse.delta[1], 0.], framebuffer: velocity.dst});
     applyForce({color: mouse.color, framebuffer: ink.dst});
   }
 
