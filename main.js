@@ -31,6 +31,72 @@ function createDoubleFBO(data) {
   }
 }
 
+var velocity = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
+var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0).map(
+    (v, i) => i / (SIZE*SIZE*4)));
+var pressure = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
+var divVelocity = createFBO((Array(SIZE * SIZE * 4)).fill(0));
+
+//// Mouse
+
+var mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
+var canvas = document.getElementsByTagName("canvas")[0];
+
+canvas.addEventListener('mousedown', e => {
+  updateMouse(e);
+});
+canvas.addEventListener('mousemove', e => {
+  if (!mouse.isDown)
+    return;
+  updateMouse(e, true);
+});
+window.addEventListener('mouseup', () => {
+  mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
+});
+function updateMouse(e, delta) {
+  var lastPos = mouse.pos;
+  mouse.pos = [Math.floor(e.offsetX * window.devicePixelRatio) / canvas.width,
+               1.0 - Math.floor(e.offsetY * window.devicePixelRatio) / canvas.height];
+  mouse.isDown = true;
+  if (delta) {
+    mouse.delta = [mouse.pos[0] - lastPos[0], mouse.pos[1] - lastPos[1]];
+  } else {
+    mouse.delta = [0.0, 0.0];
+  }
+  mouse.color = generateColor();
+}
+
+function generateColor () {
+  let c = HSVtoRGB(Math.random(), 1.0, 1.0);
+  return c;
+}
+
+function HSVtoRGB(h, s, v) {
+  let r, g, b, i, f, p, q, t;
+  i = Math.floor(h * 6);
+  f = h * 6 - i;
+  p = v * (1 - s);
+  q = v * (1 - f * s);
+  t = v * (1 - (1 - f) * s);
+
+  switch (i % 6) {
+      case 0: r = v, g = t, b = p; break;
+      case 1: r = q, g = v, b = p; break;
+      case 2: r = p, g = v, b = t; break;
+      case 3: r = p, g = q, b = v; break;
+      case 4: r = t, g = p, b = v; break;
+      case 5: r = v, g = p, b = q; break;
+  }
+
+  return [
+      r,
+      g,
+      b
+  ];
+}
+
+//// Shaders
+
 function myregl(p) {
   return regl(extend({
     vert: `
@@ -69,68 +135,6 @@ function myregl(p) {
     count: 6,
     framebuffer: regl.prop("framebuffer")
   }, p));
-}
-
-var velocity = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
-var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0).map(
-    (v, i) => i / (SIZE*SIZE*4)));
-var pressure = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
-var divVelocity = createFBO((Array(SIZE * SIZE * 4)).fill(0));
-
-var mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
-var canvas = document.getElementsByTagName("canvas")[0]; // TODO: rename
-
-canvas.addEventListener('mousedown', e => {
-  updateMouse(e);
-});
-canvas.addEventListener('mousemove', e => {
-  if (!mouse.isDown)
-    return;
-  updateMouse(e, true);
-});
-window.addEventListener('mouseup', () => {
-  mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
-});
-function updateMouse(e, delta) {
-  var lastPos = mouse.pos;
-  mouse.pos = [Math.floor(e.offsetX * window.devicePixelRatio) / canvas.width,
-               1.0 - Math.floor(e.offsetY * window.devicePixelRatio) / canvas.height];
-  mouse.isDown = true;
-  if (delta) {
-    mouse.delta = [mouse.pos[0] - lastPos[0], mouse.pos[1] - lastPos[1]];
-  } else {
-    mouse.delta = [0.0, 0.0];
-  }
-  mouse.color = generateColor();
-}
-
-function generateColor () {
-  let c = HSVtoRGB(Math.random(), 1.0, 1.0);
-  return c;
-}
-
-function HSVtoRGB (h, s, v) {
-  let r, g, b, i, f, p, q, t;
-  i = Math.floor(h * 6);
-  f = h * 6 - i;
-  p = v * (1 - s);
-  q = v * (1 - f * s);
-  t = v * (1 - (1 - f) * s);
-
-  switch (i % 6) {
-      case 0: r = v, g = t, b = p; break;
-      case 1: r = q, g = v, b = p; break;
-      case 2: r = p, g = v, b = t; break;
-      case 3: r = p, g = q, b = v; break;
-      case 4: r = t, g = p, b = v; break;
-      case 5: r = v, g = p, b = q; break;
-  }
-
-  return [
-      r,
-      g,
-      b
-  ];
 }
 
 const advect = myregl({
@@ -223,11 +227,11 @@ const jacobi = myregl({
   },
 });
 
-// Calculates div*Velocity from Velocity.
+// result = div*quantity;
 const divergence = myregl({
   frag: `
   precision mediump float;
-  uniform sampler2D velocity;
+  uniform sampler2D quantity;
   varying vec2 uv;
   varying vec2 uvL;
   varying vec2 uvR;
@@ -235,20 +239,20 @@ const divergence = myregl({
   varying vec2 uvB;
 
   void main() {
-    float vL = texture2D(velocity, uvL).x;
-    float vR = texture2D(velocity, uvR).x;
-    float vB = texture2D(velocity, uvB).y;
-    float vT = texture2D(velocity, uvT).y;
-    float div = (vR - vL + vT - vB) * .5;
+    float L = texture2D(quantity, uvL).x;
+    float R = texture2D(quantity, uvR).x;
+    float B = texture2D(quantity, uvB).y;
+    float T = texture2D(quantity, uvT).y;
+    float div = (R - L + T - B) * .5;
     gl_FragColor = vec4(div);
   }`,
 
   uniforms: {
-    velocity: regl.prop('velocity'),
+    quantity: regl.prop('quantity'),
   },
 });
 
-// w = u - grad P;
+// w = Velocity - grad Pressure;
 const subtractPressure = myregl({
   frag: `
   precision mediump float;
@@ -276,8 +280,8 @@ const subtractPressure = myregl({
   },
 });
 
-// TODO: remove?
-const clearProgram = myregl({
+// quantity = value*quantity;
+const clearQuantity = myregl({
   frag: `
   precision mediump float;
   varying vec2 uv;
@@ -289,7 +293,7 @@ const clearProgram = myregl({
 
   uniforms: {
     quantity: regl.prop('quantity'),
-    value: 0.,
+    value: regl.prop('value'),
   },
 })
 
@@ -316,7 +320,7 @@ function doJacobi(count, x, p) {
 }
 
 function computePressure() {
-  divergence({velocity: velocity.dst, framebuffer: divVelocity});
+  divergence({quantity: velocity.dst, framebuffer: divVelocity});
   doJacobi(50, pressure, {b: divVelocity, alpha: -1, beta: 4});
 }
 
@@ -324,7 +328,9 @@ regl.frame(function () {
   regl.clear({
     color: [0, 0, 0, 1]
   })
-  regl.clear({color: [0, 0, 0, 0], framebuffer: pressure.src});
+  // pressure = .8*pressure -- keep most of our guess from last frame.
+  clearQuantity({quantity: pressure.src, value: .8, framebuffer: pressure.dst});
+  pressure.swap();
 
   advect({velocity: velocity.src, quantity: velocity.src, framebuffer: velocity.dst});
   advect({velocity: velocity.src, quantity: ink.src, framebuffer: ink.dst});
