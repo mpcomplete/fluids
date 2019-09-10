@@ -319,6 +319,7 @@ function doJacobi(count, x, p) {
   }
 }
 
+// Compute pressure field into pressure FBO, using divergence of velocity field.
 function computePressure() {
   divergence({quantity: velocity.dst, framebuffer: divVelocity});
   doJacobi(50, pressure, {b: divVelocity, alpha: -1, beta: 4});
