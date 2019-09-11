@@ -37,34 +37,73 @@ var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0).map(
 var pressure = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
 var divVelocity = createFBO((Array(SIZE * SIZE * 4)).fill(0));
 
-//// Mouse
+//// Mouse/Touchscreen
 
-var mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
+function Pointer() {
+  this.id = -1;
+  this.pos = [0, 0];
+  this.delta = [0, 0];
+  this.deltaY = 0;
+  this.isDown = false;
+}
+var pointers = [new Pointer()];
 var canvas = document.getElementsByTagName("canvas")[0];
 
+function updatePointer(pointer, pos, isDown, isDelta) {
+  var lastPos = pointer.pos;
+  pointer.pos = [Math.floor(pos[0] * window.devicePixelRatio) / canvas.width,
+                 1.0 - Math.floor(pos[1] * window.devicePixelRatio) / canvas.height];
+  pointer.isDown = isDown;
+  if (isDelta) {
+    pointer.delta = [pointer.pos[0] - lastPos[0], pointer.pos[1] - lastPos[1]];
+  } else {
+    pointer.delta = [0.0, 0.0];
+  }
+  pointer.color = generateColor();
+}
+
 canvas.addEventListener('mousedown', e => {
-  updateMouse(e);
+  let p = pointers.find(p => p.id == -1); 
+  updatePointer(p, [e.offsetX, e.offsetY], true, false);
 });
 canvas.addEventListener('mousemove', e => {
-  if (!mouse.isDown)
+  let p = pointers.find(p => p.id == -1); 
+  if (!p.isDown)
     return;
-  updateMouse(e, true);
+    updatePointer(p, [e.offsetX, e.offsetY], true, true);
 });
 window.addEventListener('mouseup', () => {
-  mouse = {pos: [0.0, 0.0], delta: [0.0, 0.0], isDown: false};
+  let p = pointers.find(p => p.id == -1);
+  p.isDown = false;
 });
-function updateMouse(e, delta) {
-  var lastPos = mouse.pos;
-  mouse.pos = [Math.floor(e.offsetX * window.devicePixelRatio) / canvas.width,
-               1.0 - Math.floor(e.offsetY * window.devicePixelRatio) / canvas.height];
-  mouse.isDown = true;
-  if (delta) {
-    mouse.delta = [mouse.pos[0] - lastPos[0], mouse.pos[1] - lastPos[1]];
-  } else {
-    mouse.delta = [0.0, 0.0];
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const touches = e.targetTouches;
+  while (touches.length >= pointers.length)
+    pointers.push(new Pointer());
+  for (let i = 0; i < touches.length; i++) {
+    pointers[i+1].id = touches[i].identifier;
+    updatePointer(pointers[i+1], [touches[i].pageX, touches[i].pageY], true, false);
   }
-  mouse.color = generateColor();
-}
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const touches = e.targetTouches;
+  for (let i = 0; i < touches.length; i++) {
+    let p = pointers[i+1];
+    if (!p.isDown) continue;
+    updatePointer(p, [touches[i].pageX, touches[i].pageY], true, true);
+  }
+}, false);
+window.addEventListener('touchend', e => {
+  const touches = e.changedTouches;
+  for (let i = 0; i < touches.length; i++) {
+    let p = pointers.find(p => p.id == touches[i].identifier);
+    if (p == null) continue;
+    p.isDown = false;
+  }
+});
 
 function generateColor () {
   let c = HSVtoRGB(Math.random(), 1.0, 1.0);
@@ -164,6 +203,7 @@ const advect = myregl({
 const applyForce = myregl({
   frag: `
   precision mediump float;
+  uniform sampler2D quantity;
   uniform vec2 mouse;
   uniform vec3 color;
   uniform float dt;
@@ -172,19 +212,15 @@ const applyForce = myregl({
   void main() {
     vec2 p = uv - mouse.xy;
     float d = exp(-dot(p, p) / .001);
-    vec3 u = color*d;
+    vec3 u = color*d + texture2D(quantity, uv).rgb;
     gl_FragColor = vec4(u, 1.);
   }`,
 
   uniforms: {
+    quantity: regl.prop('quantity'),
     color: regl.prop('color'),
-    mouse: () => mouse.pos,
+    mouse: regl.prop('mouse'),
     dt: 1./60,
-  },
-
-  blend: {
-    enable: true,
-    func: {src: 'one', dst: 'one'},
   },
 });
 
@@ -288,7 +324,7 @@ const clearQuantity = myregl({
   uniform sampler2D quantity;
   uniform float value;
   void main () {
-      gl_FragColor = value * texture2D(quantity, uv);
+    gl_FragColor = value * texture2D(quantity, uv);
   }`,
 
   uniforms: {
@@ -336,9 +372,13 @@ regl.frame(function () {
   advect({velocity: velocity.src, quantity: velocity.src, framebuffer: velocity.dst});
   advect({velocity: velocity.src, quantity: ink.src, framebuffer: ink.dst});
 
-  if (mouse.isDown) {
-    applyForce({color: [30*mouse.delta[0], 30*mouse.delta[1], 0.], framebuffer: velocity.dst});
-    applyForce({color: mouse.color, framebuffer: ink.dst});
+  for (let i = 0; i < pointers.length; i++) {
+    if (pointers[i].isDown) {
+      velocity.swap();
+      ink.swap();
+      applyForce({color: [30*pointers[i].delta[0], 30*pointers[i].delta[1], 0.], mouse: pointers[i].pos, quantity: velocity.src, framebuffer: velocity.dst});
+      applyForce({color: pointers[i].color, mouse: pointers[i].pos, quantity: ink.src, framebuffer: ink.dst});
+    }
   }
 
   computePressure();
