@@ -32,8 +32,7 @@ function createDoubleFBO(data) {
 }
 
 var velocity = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
-var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0).map(
-    (v, i) => i / (SIZE*SIZE*4)));
+var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
 var pressure = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
 var divVelocity = createFBO((Array(SIZE * SIZE * 4)).fill(0));
 
