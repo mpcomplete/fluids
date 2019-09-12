@@ -105,7 +105,13 @@ window.addEventListener('touchend', e => {
   }
 });
 
+let nextColor = null;
 function generateColor () {
+  if (nextColor == null) {
+    nextColor = HSVtoRGB(Math.random(), 1.0, 1.0);
+    window.setTimeout(() => nextColor = null, 100);
+  }
+  return nextColor;
   return HSVtoRGB(Math.random(), 1.0, 1.0);
 }
 
@@ -372,10 +378,11 @@ function doJacobi(count, x, p) {
 // Compute pressure field into pressure FBO, using divergence of velocity field.
 function computePressure() {
   divergence({quantity: velocity.dst, framebuffer: divVelocity});
-  doJacobi(30, pressure, {b: divVelocity, alpha: -1, beta: 4});
+  doJacobi(20, pressure, {b: divVelocity, alpha: -1, beta: 4});
 }
 
 regl.frame(function () {
+  const velocityScale = 50;
   regl.clear({
     color: [0, 0, 0, 1]
   })
@@ -390,7 +397,7 @@ regl.frame(function () {
     if (pointers[i].isDown) {
       velocity.swap();
       ink.swap();
-      applyForce({color: [30*pointers[i].delta[0], 30*pointers[i].delta[1], 0.], mouse: pointers[i].pos, quantity: velocity.src, framebuffer: velocity.dst});
+      applyForce({color: [velocityScale*pointers[i].delta[0], velocityScale*pointers[i].delta[1], 0.], mouse: pointers[i].pos, quantity: velocity.src, framebuffer: velocity.dst});
       applyForce({color: pointers[i].color, mouse: pointers[i].pos, quantity: ink.src, framebuffer: ink.dst});
     }
   }
