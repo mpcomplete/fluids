@@ -106,8 +106,7 @@ window.addEventListener('touchend', e => {
 });
 
 function generateColor () {
-  let c = HSVtoRGB(Math.random(), 1.0, 1.0);
-  return c;
+  return HSVtoRGB(Math.random(), 1.0, 1.0);
 }
 
 function HSVtoRGB(h, s, v) {
@@ -251,6 +250,13 @@ const jacobi = myregl({
     // b sample, from center
     vec4 bC = texture2D(b, uv);
 
+    // Handle boundary edge (good only for pressure).
+    vec4 xC = texture2D(x, uv);
+    if (uvL.x < 0.) { xL = xC; }
+    if (uvR.x > 1.) { xR = xC; }
+    if (uvB.y < 0.) { xB = xC; }
+    if (uvT.y > 1.) { xT = xC; }
+
     // evaluate Jacobi iteration
     gl_FragColor = (xL + xR + xB + xT + alpha * bC) * rBeta;
   }`,
@@ -279,11 +285,14 @@ const divergence = myregl({
     float R = texture2D(quantity, uvR).x;
     float B = texture2D(quantity, uvB).y;
     float T = texture2D(quantity, uvT).y;
+
+    // Handle boundary edge (good only for velocity).
     vec2 C = texture2D(quantity, uv).xy;
     if (uvL.x < 0.) { L = -C.x; }
     if (uvR.x > 1.) { R = -C.x; }
     if (uvB.y < 0.) { B = -C.y; }
     if (uvT.y > 1.) { T = -C.y; }
+
     float div = (R - L + T - B) * .5;
     gl_FragColor = vec4(div);
   }`,
