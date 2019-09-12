@@ -9,7 +9,7 @@ const TEX_PROPS = {
   format: 'rgba',
   mag: 'linear',
   min: 'linear',
-  wrap: 'repeat',
+  wrap: 'clamp',
   width: SIZE, 
   height: SIZE
 }
@@ -279,6 +279,11 @@ const divergence = myregl({
     float R = texture2D(quantity, uvR).x;
     float B = texture2D(quantity, uvB).y;
     float T = texture2D(quantity, uvT).y;
+    vec2 C = texture2D(quantity, uv).xy;
+    if (uvL.x < 0.) { L = -C.x; }
+    if (uvR.x > 1.) { R = -C.x; }
+    if (uvB.y < 0.) { B = -C.y; }
+    if (uvT.y > 1.) { T = -C.y; }
     float div = (R - L + T - B) * .5;
     gl_FragColor = vec4(div);
   }`,
