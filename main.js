@@ -1,11 +1,11 @@
 const regl = require('regl')({
-  extensions: [ 'OES_texture_float', 'OES_texture_float_linear' ]
+  extensions: [ 'OES_texture_half_float', 'OES_texture_half_float_linear' ]
 });
 const extend = (a, b) => Object.assign(b, a)
 
 const SIZE = 512;
 const TEX_PROPS = {
-  type: 'float', 
+  type: 'half float',
   format: 'rgba',
   mag: 'linear',
   min: 'linear',
