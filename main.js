@@ -1,5 +1,6 @@
 const regl = require('regl')({
-  extensions: [ 'OES_texture_float', 'OES_texture_float_linear' ]
+  // extensions: [ 'OES_texture_float', 'OES_texture_float_linear' ]
+  extensions: [ 'OES_texture_float' ]
 });
 const extend = (a, b) => Object.assign(b, a)
 
@@ -7,8 +8,10 @@ const SIZE = 512;
 const TEX_PROPS = {
   type: 'float', 
   format: 'rgba',
-  mag: 'linear',
-  min: 'linear',
+  mag: 'nearest',
+  min: 'nearest',
+  // mag: 'linear',
+  // min: 'linear',
   wrap: 'clamp',
   width: SIZE, 
   height: SIZE
@@ -182,6 +185,7 @@ function myregl(p) {
 
 const advect = myregl({
   frag: `
+#define MANUAL_FILTERING 1
   precision mediump float;
   uniform sampler2D velocity;
   uniform sampler2D quantity;
@@ -189,11 +193,33 @@ const advect = myregl({
   uniform float dissipation;
   varying vec2 uv;
 
+  vec4 bilerp(sampler2D sam, vec2 uv) {
+    float tsize = 1.0 / 512.0;
+    vec2 st = uv / tsize - 0.5;
+    vec2 iuv = floor(st);
+    vec2 fuv = fract(st);
+    vec4 a = texture2D(sam, (iuv + vec2(0.5, 0.5)) * tsize);
+    vec4 b = texture2D(sam, (iuv + vec2(1.5, 0.5)) * tsize);
+    vec4 c = texture2D(sam, (iuv + vec2(0.5, 1.5)) * tsize);
+    vec4 d = texture2D(sam, (iuv + vec2(1.5, 1.5)) * tsize);
+    return mix(mix(a, b, fuv.x), mix(c, d, fuv.x), fuv.y);
+  }
+
   void main() {
-    vec2 u = texture2D(velocity, uv).xy;
-    vec2 uvOld = uv - u*dt;
+    // vec2 u = texture2D(velocity, uv).xy;
+    // vec2 uvOld = uv - u*dt;
+    // float decay = 1.0 + dissipation * dt;
+    // gl_FragColor = vec4(texture2D(quantity, uvOld).xyz / decay, 1.);
+
+#ifdef MANUAL_FILTERING
+    vec2 coord = uv - dt * bilerp(velocity, uv).xy;
+    vec4 result = bilerp(quantity, coord);
+#else
+    vec2 coord = uv - dt * texture2D(velocity, uv).xy;
+    vec4 result = texture2D(quantity, coord);
+#endif
     float decay = 1.0 + dissipation * dt;
-    gl_FragColor = vec4(texture2D(quantity, uvOld).xyz / decay, 1.);
+    gl_FragColor = result / decay;
   }`,
 
   uniforms: {
