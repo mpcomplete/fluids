@@ -1,21 +1,34 @@
-const regl = require('regl')({
-  // extensions: [ 'OES_texture_float', 'OES_texture_float_linear' ]
-  extensions: [ 'OES_texture_float' ]
-});
-const extend = (a, b) => Object.assign(b, a)
+var has_float_linear = false;
 
 const SIZE = 512;
-const TEX_PROPS = {
+var TEX_PROPS = {
   type: 'float', 
   format: 'rgba',
-  mag: 'nearest',
-  min: 'nearest',
-  // mag: 'linear',
-  // min: 'linear',
   wrap: 'clamp',
   width: SIZE, 
   height: SIZE
-}
+};
+
+const extend = (a, b) => Object.assign(b, a);
+
+const regl = require('regl')({
+  extensions: [ 'OES_texture_float' ],
+  optionalExtensions: ['oes_texture_float_linear'],
+  onDone: function (err, regl) {
+    if (err) {
+      console.log(err);
+      return;
+    }
+
+    if (regl.hasExtension('oes_texture_float_linear')) {
+      TEX_PROPS = extend(TEX_PROPS, {mag: 'linear', min: 'linear'});
+      has_float_linear = true;
+    } else {
+      TEX_PROPS = extend(TEX_PROPS, {mag: 'nearest', min: 'nearest'});
+      has_float_linear = false;
+    }
+  }
+});
 
 function createFBO(data) {
  return regl.framebuffer({
@@ -144,6 +157,11 @@ function HSVtoRGB(h, s, v) {
 //// Shaders
 
 function myregl(p) {
+  if (p.defines) {
+    var defines = p.defines().map((d) => "#define " + d).join("\n");
+    p.frag = defines + p.frag;
+    delete p.defines;
+  }
   return regl(extend({
     vert: `
     precision mediump float;
@@ -185,39 +203,32 @@ function myregl(p) {
 
 const advect = myregl({
   frag: `
-#define MANUAL_FILTERING 1
   precision mediump float;
   uniform sampler2D velocity;
   uniform sampler2D quantity;
   uniform float dt;
   uniform float dissipation;
+  uniform vec2 gridSize;
   varying vec2 uv;
 
   vec4 bilerp(sampler2D sam, vec2 uv) {
-    float tsize = 1.0 / 512.0;
-    vec2 st = uv / tsize - 0.5;
+#ifdef MANUAL_FILTERING
+    vec2 st = uv / gridSize - 0.5;
     vec2 iuv = floor(st);
     vec2 fuv = fract(st);
-    vec4 a = texture2D(sam, (iuv + vec2(0.5, 0.5)) * tsize);
-    vec4 b = texture2D(sam, (iuv + vec2(1.5, 0.5)) * tsize);
-    vec4 c = texture2D(sam, (iuv + vec2(0.5, 1.5)) * tsize);
-    vec4 d = texture2D(sam, (iuv + vec2(1.5, 1.5)) * tsize);
+    vec4 a = texture2D(sam, (iuv + vec2(0.5, 0.5)) * gridSize);
+    vec4 b = texture2D(sam, (iuv + vec2(1.5, 0.5)) * gridSize);
+    vec4 c = texture2D(sam, (iuv + vec2(0.5, 1.5)) * gridSize);
+    vec4 d = texture2D(sam, (iuv + vec2(1.5, 1.5)) * gridSize);
     return mix(mix(a, b, fuv.x), mix(c, d, fuv.x), fuv.y);
+#else
+    return texture2D(sam, uv);
+#endif
   }
 
   void main() {
-    // vec2 u = texture2D(velocity, uv).xy;
-    // vec2 uvOld = uv - u*dt;
-    // float decay = 1.0 + dissipation * dt;
-    // gl_FragColor = vec4(texture2D(quantity, uvOld).xyz / decay, 1.);
-
-#ifdef MANUAL_FILTERING
-    vec2 coord = uv - dt * bilerp(velocity, uv).xy;
-    vec4 result = bilerp(quantity, coord);
-#else
-    vec2 coord = uv - dt * texture2D(velocity, uv).xy;
-    vec4 result = texture2D(quantity, coord);
-#endif
+    vec2 uvOld = uv - dt * bilerp(velocity, uv).xy;
+    vec4 result = bilerp(quantity, uvOld);
     float decay = 1.0 + dissipation * dt;
     gl_FragColor = result / decay;
   }`,
@@ -227,7 +238,10 @@ const advect = myregl({
     quantity: regl.prop('quantity'),
     dt: 1./60,
     dissipation: .2,
+    gridSize: [1. / SIZE, 1. / SIZE],
   },
+
+  defines: () => !has_float_linear ? ['MANUAL_FILTERING'] : [],
 });
 
 const applyForce = myregl({
