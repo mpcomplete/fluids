@@ -2,25 +2,25 @@ var has_float_linear = false;
 
 const SIZE = 512;
 var TEX_PROPS = {
-  type: 'float', 
+  type: 'float16',
   format: 'rgba',
   wrap: 'clamp',
-  width: SIZE, 
+  width: SIZE,
   height: SIZE
 };
 
 const extend = (a, b) => Object.assign(b, a);
 
 const regl = require('regl')({
-  extensions: [ 'OES_texture_float' ],
-  optionalExtensions: ['oes_texture_float_linear'],
+  extensions: [ 'OES_texture_half_float' ],
+  optionalExtensions: ['oes_texture_half_float_linear'],
   onDone: function (err, regl) {
     if (err) {
       console.log(err);
       return;
     }
 
-    if (regl.hasExtension('oes_texture_float_linear')) {
+    if (regl.hasExtension('oes_texture_half_float_linear')) {
       TEX_PROPS = extend(TEX_PROPS, {mag: 'linear', min: 'linear'});
       has_float_linear = true;
     } else {
@@ -30,27 +30,27 @@ const regl = require('regl')({
   }
 });
 
-function createFBO(data) {
+function createFBO() {
  return regl.framebuffer({
-    color: regl.texture(extend(TEX_PROPS, {data})),
+    color: regl.texture(TEX_PROPS),
     depthStencil: false
   });
 }
 
-function createDoubleFBO(data) {
+function createDoubleFBO() {
   return {
-    src: createFBO(data),
-    dst: createFBO(data),
+    src: createFBO(),
+    dst: createFBO(),
     swap: function() {
       [this.src, this.dst] = [this.dst, this.src];
     }
   }
 }
 
-var velocity = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
-var ink = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
-var pressure = createDoubleFBO((Array(SIZE * SIZE * 4)).fill(0));
-var divVelocity = createFBO((Array(SIZE * SIZE * 4)).fill(0));
+var velocity = createDoubleFBO();
+var ink = createDoubleFBO();
+var pressure = createDoubleFBO();
+var divVelocity = createFBO();
 
 //// Mouse/Touchscreen
 
