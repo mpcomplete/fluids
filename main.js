@@ -9,6 +9,10 @@ var TEX_PROPS = {
   height: SIZE
 };
 
+var config = {
+  clamp_edges: true,
+};
+
 const extend = (a, b) => Object.assign(b, a);
 
 const regl = require('regl')({
@@ -120,14 +124,23 @@ window.addEventListener('touchend', e => {
   }
 });
 
+const randInt = (lo, hi) => Math.floor(lo + Math.random() * (hi - lo));
+const randItem = (a) => a[randInt(0, a.length)]
+
 let nextColor = null;
 function generateColor () {
   if (nextColor == null) {
+    const red = 0.;
+    const yellow = .1;
+    const green = .3;
+    const blue = .6;
+    const purple = .75;
+    const pink = .9;
     nextColor = HSVtoRGB(Math.random(), 1.0, 1.0);
+    // nextColor = HSVtoRGB(randItem([red, yellow, green, blue, purple, pink]), 1.0, 1.0);
     window.setTimeout(() => nextColor = null, 100);
   }
   return nextColor;
-  return HSVtoRGB(Math.random(), 1.0, 1.0);
 }
 
 function HSVtoRGB(h, s, v) {
@@ -138,19 +151,19 @@ function HSVtoRGB(h, s, v) {
   q = v * (1 - f * s);
   t = v * (1 - (1 - f) * s);
 
-  switch (i % 6) {
-      case 0: r = v, g = t, b = p; break;
-      case 1: r = q, g = v, b = p; break;
-      case 2: r = p, g = v, b = t; break;
-      case 3: r = p, g = q, b = v; break;
-      case 4: r = t, g = p, b = v; break;
-      case 5: r = v, g = p, b = q; break;
+  switch (i%6) {
+    case 0: r=v, g=t, b=p; break;
+    case 1: r=q, g=v, b=p; break;
+    case 2: r=p, g=v, b=t; break;
+    case 3: r=p, g=q, b=v; break;
+    case 4: r=t, g=p, b=v; break;
+    case 5: r=v, g=p, b=q; break;
   }
 
   return [
-      r,
-      g,
-      b
+    r,
+    g,
+    b
   ];
 }
 
@@ -295,12 +308,14 @@ const jacobi = myregl({
     // b sample, from center
     vec4 bC = texture2D(b, uv);
 
+#ifdef CLAMP_EDGES
     // Handle boundary edge (good only for pressure).
     vec4 xC = texture2D(x, uv);
     if (uvL.x < 0.) { xL = xC; }
     if (uvR.x > 1.) { xR = xC; }
     if (uvB.y < 0.) { xB = xC; }
     if (uvT.y > 1.) { xT = xC; }
+#endif
 
     // evaluate Jacobi iteration
     gl_FragColor = (xL + xR + xB + xT + alpha * bC) * rBeta;
@@ -312,6 +327,7 @@ const jacobi = myregl({
     alpha: regl.prop('alpha'),
     rBeta: regl.prop('rBeta'),
   },
+  defines: () => config.clamp_edges ? ['CLAMP_EDGES'] : [],
 });
 
 // result = div*quantity;
@@ -331,12 +347,14 @@ const divergence = myregl({
     float B = texture2D(quantity, uvB).y;
     float T = texture2D(quantity, uvT).y;
 
+#ifdef CLAMP_EDGES
     // Handle boundary edge (good only for velocity).
     vec2 C = texture2D(quantity, uv).xy;
     if (uvL.x < 0.) { L = -C.x; }
     if (uvR.x > 1.) { R = -C.x; }
     if (uvB.y < 0.) { B = -C.y; }
     if (uvT.y > 1.) { T = -C.y; }
+#endif
 
     float div = (R - L + T - B) * .5;
     gl_FragColor = vec4(div);
@@ -345,6 +363,7 @@ const divergence = myregl({
   uniforms: {
     quantity: regl.prop('quantity'),
   },
+  defines: () => config.clamp_edges ? ['CLAMP_EDGES'] : [],
 });
 
 // w = Velocity - grad Pressure;
@@ -396,14 +415,28 @@ const draw = myregl({
   frag: `
   precision mediump float;
   uniform sampler2D quantity;
+  uniform float time;
   varying vec2 uv;
 
+  // 2D rotation matrix.
+  mat2 rotate(float angle)
+  {
+    return mat2(
+      vec2( cos(angle), sin(angle)),
+      vec2(-sin(angle), cos(angle)));
+  }
+
   void main() {
-    gl_FragColor = vec4(texture2D(quantity, uv).rgb, 1.);
+    vec2 st = uv;
+    // st -= .5;
+    // st = rotate(time*.2 - st.x)*st;
+    // st = abs(sin(st*8.));
+    gl_FragColor = vec4(texture2D(quantity, st).rgb, 1.);
   }`,
 
   uniforms: {
     quantity: regl.prop('quantity'),
+    time: regl.context('time'),
   },
 })
 
