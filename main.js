@@ -418,20 +418,25 @@ const draw = myregl({
   uniform float time;
   varying vec2 uv;
 
-  // 2D rotation matrix.
-  mat2 rotate(float angle)
-  {
+  mat2 rotate2(float angle) {
     return mat2(
       vec2( cos(angle), sin(angle)),
       vec2(-sin(angle), cos(angle)));
   }
-
+  mat3 rotate3(float angle, vec3 axis) {
+    vec3 a = normalize(axis);
+    float s = sin(angle);
+    float c = cos(angle);
+    float oc = 1.0 - c;
+    return mat3(oc * a.x * a.x + c,        oc * a.x * a.y - a.z * s,  oc * a.z * a.x + a.y * s,
+                oc * a.x * a.y + a.z * s,  oc * a.y * a.y + c,        oc * a.y * a.z - a.x * s,
+                oc * a.z * a.x - a.y * s,  oc * a.y * a.z + a.x * s,  oc * a.z * a.z + c);
+  }
   void main() {
     vec2 st = uv;
-    // st -= .5;
-    // st = rotate(time*.2 - st.x)*st;
-    // st = abs(sin(st*8.));
+    // st = abs(sin((st-.5)*8.));
     gl_FragColor = vec4(texture2D(quantity, st).rgb, 1.);
+    // gl_FragColor.rgb = rotate3(2.*time, vec3(0.454,0.725,1.072))*gl_FragColor.rgb;
   }`,
 
   uniforms: {
