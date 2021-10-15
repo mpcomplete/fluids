@@ -271,7 +271,7 @@ const applyForce = myregl({
   void main() {
     vec2 p = uv - mouse.xy;
     float d = exp(-dot(p, p) / .001);
-    vec3 u = color*d + texture2D(quantity, uv).rgb*(1.-d*.1);
+    vec3 u = color*d + texture2D(quantity, uv).rgb*(1.-d*.2);
     gl_FragColor = vec4(u, 1.);
   }`,
 
