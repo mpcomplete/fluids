@@ -11,6 +11,8 @@ var TEX_PROPS = {
 
 var config = {
   clamp_edges: true,
+  enable_kaleido: false,
+  enable_color_strobe: false,
 };
 
 const extend = (a, b) => Object.assign(b, a);
@@ -416,6 +418,8 @@ const draw = myregl({
   precision mediump float;
   uniform sampler2D quantity;
   uniform float time;
+  uniform bool enable_kaleido;
+  uniform bool enable_color_strobe;
   varying vec2 uv;
 
   mat2 rotate2(float angle) {
@@ -434,14 +438,18 @@ const draw = myregl({
   }
   void main() {
     vec2 st = uv;
-    // st = abs(sin((st-.5)*8.));
+    if (enable_kaleido)
+      st = abs(sin((st-.5)*8.));
     gl_FragColor = vec4(texture2D(quantity, st).rgb, 1.);
-    // gl_FragColor.rgb = rotate3(2.*time, vec3(0.454,0.725,1.072))*gl_FragColor.rgb;
+    if (enable_color_strobe)
+      gl_FragColor.rgb = rotate3(2.*time, vec3(0.454,0.725,1.072))*gl_FragColor.rgb;
   }`,
 
   uniforms: {
     quantity: regl.prop('quantity'),
     time: regl.context('time'),
+    enable_kaleido: () => config.enable_kaleido,
+    enable_color_strobe: () => config.enable_color_strobe,
   },
 })
 
